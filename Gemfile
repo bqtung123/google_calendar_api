@@ -70,3 +70,6 @@ group :test do
   gem "selenium-webdriver"
   gem "webdrivers"
 end
+gem 'pry-rails'
+gem 'figaro'
+gem 'devise'
