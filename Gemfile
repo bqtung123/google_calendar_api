@@ -73,3 +73,5 @@ end
 gem 'pry-rails'
 gem 'figaro'
 gem 'devise'
+gem 'omniauth-google-oauth2'
+gem 'omniauth-rails_csrf_protection', '~> 0.1'

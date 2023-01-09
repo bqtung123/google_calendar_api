@@ -1,3 +1,9 @@
 <h1>Home#index</h1>
 <p>Find me in app/views/home/index.html.erb</p>
-<%= link_to "Sign out", destroy_user_session_path, data: { turbo_method: :delete } %>
+
+<% if current_user %>
+    Signed in as <strong><%= current_user.name %></strong>!
+    <%= link_to "Sign out", signout_path, id: "sign_out" %>
+<% else %>
+  <%= link_to "Log In with Google", "/auth/google_oauth2", method: :post %>
+<% end %>
