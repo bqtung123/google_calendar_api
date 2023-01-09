@@ -3,7 +3,7 @@ class User < ApplicationRecord
   # :confirmable, :lockable, :timeoutable, :trackable and :omniauthable
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable
-  
+
   def self.from_omniauth(auth)
     user = User.where(email: auth.info.email).first
 
@@ -19,9 +19,15 @@ class User < ApplicationRecord
         user.email = auth.info.email
         user.oauth_token = auth.credentials.token
         user.oauth_expires_at = Time.at(auth.credentials.expires_at)
+        user.refresh_token = auth.credentials.refresh_token
+        binding.pry
         user.save!
       end
     end
     user
+  end
+
+  def expired?
+    oauth_expires_at < Time.current
   end
 end
