@@ -5,5 +5,5 @@
     Signed in as <strong><%= current_user.name %></strong>!
     <%= link_to "Sign out", signout_path, id: "sign_out" %>
 <% else %>
-  <%= link_to "Sign in with Google", user_google_oauth2_omniauth_authorize_path %>
+  <%= link_to "Sign in with Google", user_google_oauth2_omniauth_authorize_path, method: :post %>
 <% end %>

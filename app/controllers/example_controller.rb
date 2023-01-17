@@ -21,7 +21,7 @@ class ExampleController < ApplicationController
 
       if current_user.expired?
         client.authorization.refresh!
-        binding.pry
+
         current_user.update(
           oauth_token: client.authorization.access_token,
           refresh_token: client.authorization.refresh_token,
@@ -31,7 +31,7 @@ class ExampleController < ApplicationController
     rescue StandardError => e
       puts e.message
     end
-    binding.pry
+
     render json: { success: true }
   end
 end

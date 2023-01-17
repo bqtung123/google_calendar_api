@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  resources :tasks
   get 'example/redirect'
   get 'sessions/create'
   get 'sessions/destroy'
