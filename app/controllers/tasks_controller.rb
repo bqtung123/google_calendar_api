@@ -1,9 +1,14 @@
 class TasksController < ApplicationController
+  require 'google/apis/calendar_v3'
+  require 'google/api_client/client_secrets'
+
   before_action :set_task, only: %i[ show edit update destroy ]
   CALENDAR_ID = 'primary'
   # GET /tasks or /tasks.json
   def index
     @tasks = Task.all
+    # client = get_google_calendar_client
+
   end
 
   # GET /tasks/1 or /tasks/1.json
@@ -27,6 +32,10 @@ class TasksController < ApplicationController
     ge = client.insert_event('primary', event)
     
     flash[:notice] = 'Task was successfully added.'
+    # Task.create!(task_params)
+    @task = Task.new(task_params.merge(google_event_id: ge.id))
+    @task.user = current_user
+    @task.save!
     redirect_to tasks_path
   end
 
@@ -53,17 +62,32 @@ class TasksController < ApplicationController
         current_user.update(
           oauth_token: client.authorization.access_token,
           refresh_token: client.authorization.refresh_token,
-          oauth_expires_at: Time.at(auth.credentials.expires_at)
+          oauth_expires_at: Time.at(client.authorization.expires_at)
         )
       end
     rescue StandardError => e
       puts e.message
     end
+
     client
   end
 
   # PATCH/PUT /tasks/1 or /tasks/1.json
   def update
+
+    client = get_google_calendar_client
+    @events = current_user.tasks
+    @events.each do |event|
+      ge = event.get_google_event(@event.google_event_id, @event.user)
+      guests = ge.attendees.map {|at| at.email}.join(", ")
+      event.update(guest_list: guests)
+    end
+    g_event = client.get_event(Event::CALENDAR_ID, @task.google_event_id)
+    task = params[:task]
+    ge = get_event task
+    # binding.pry
+    client.update_event(Event::CALENDAR_ID, @task.google_event_id, ge)
+
     respond_to do |format|
       if @task.update(task_params)
         format.html { redirect_to task_url(@task), notice: "Task was successfully updated." }
@@ -77,8 +101,16 @@ class TasksController < ApplicationController
 
   # DELETE /tasks/1 or /tasks/1.json
   def destroy
-    @task.destroy
+    # @task.destroy
+    client = get_google_calendar_client
+    @tasks = current_user.tasks
+    @tasks.each do |event|
+      g_event = client.get_event(Event::CALENDAR_ID, event.google_event_id)
+      guests = g_event.attendees.map {|at| at.email}.join(", ")
+      event.update(members: guests, title: g_event.summary)
+    end
 
+    # client.delete_event(Event::CALENDAR_ID, @task.google_event_id)
     respond_to do |format|
       format.html { redirect_to tasks_url, notice: "Task was successfully destroyed." }
       format.json { head :no_content }
@@ -98,24 +130,51 @@ class TasksController < ApplicationController
 
     def get_event task
 
-      attendees = task[:members].split(',').map{ |t| {email: t.strip} }
-      event = {
+      attendees = task[:members].split(',').map{ |t|  Google::Apis::CalendarV3::EventAttendee.new(
+                                                    email: t.strip
+                                                ) }
+      # binding.pry
+      # event = {
+      #   summary: task[:title],
+      #   description: task[:description],
+      #   start: {
+      #     date_time: task[:start_date].to_datetime.to_s,
+      #     time_zone: 'Asia/Tokyo', 
+      #   },
+      #   end:  {
+      #     date_time: task[:end_date].to_datetime.to_s,
+      #     time_zone: 'Asia/Tokyo', 
+      #   },
+      #   sendNotifications: true,
+      #   attendees: attendees,
+      #   reminders: {
+      #     use_default: true
+      #   }
+      # }
+# binding.pry
+      event = Google::Apis::CalendarV3::Event.new(
         summary: task[:title],
+        location: '800 Howard St., San Francisco, CA 94103',
         description: task[:description],
-        start: {
-          date_time: task[:start_date].to_datetime.to_s,
-          time_zone: 'Asia/Tokyo', 
-        },
-        end:  {
-          date_time: task[:end_date].to_datetime.to_s,
-          time_zone: 'Asia/Tokyo', 
-        },
-        sendNotifications: true,
+        start: Google::Apis::CalendarV3::EventDateTime.new(
+          date_time: task[:start_date].to_datetime.to_s.gsub('+00:00',''),
+          time_zone: 'Asia/Ho_Chi_Minh'
+        ),
+        end: Google::Apis::CalendarV3::EventDateTime.new(
+          date_time: task[:end_date].to_datetime.to_s.gsub('+00:00',''),
+          time_zone: 'Asia/Ho_Chi_Minh'
+        ),
+        # recurrence: [
+        #   'RRULE:FREQ=DAILY;COUNT=3'
+        # ],
         attendees: attendees,
-        reminders: {
-          use_default: true
-        }
-      }
+        sendNotifications: true,
+        sendUpdates: 'all',
+        reminders: Google::Apis::CalendarV3::Event::Reminders.new(
+          use_default: true,
+        )
+      )
+      # binding.pry
       event
     end
 end
