@@ -1,12 +1,13 @@
 class TasksController < ApplicationController
   require 'google/apis/calendar_v3'
   require 'google/api_client/client_secrets'
+  require 'googleauth'
 
   before_action :set_task, only: %i[ show edit update destroy ]
   CALENDAR_ID = 'primary'
   # GET /tasks or /tasks.json
   def index
-    @tasks = Task.all
+    @tasks = current_user.tasks
     # client = get_google_calendar_client
 
   end
@@ -27,48 +28,66 @@ class TasksController < ApplicationController
   # POST /tasks or /tasks.json
   def create
     client = get_google_calendar_client
-    task = params[:task]
+    task = Task.new(task_params)
+    task.user = current_user
+    task.save!
+
     event = get_event task
-    ge = client.insert_event('primary', event)
-    
+    # calendar = client.get_calendar('o5na5rdug1u37mnn2sunhidd98@group.calendar.google.com')
+
+    ge = client.insert_event("primary", event)
+
     flash[:notice] = 'Task was successfully added.'
-    # Task.create!(task_params)
-    @task = Task.new(task_params.merge(google_event_id: ge.id))
-    @task.user = current_user
-    @task.save!
+    task.update!(google_event_id: ge.id)
     redirect_to tasks_path
   end
 
   def get_google_calendar_client
     client = Google::Apis::CalendarV3::CalendarService.new
     return unless current_user.present? && current_user.oauth_token.present? && current_user.refresh_token.present?
-
-    secrets = Google::APIClient::ClientSecrets.new({
-                                                     'web' => {
-                                                       'access_token' => current_user.oauth_token,
-                                                       'refresh_token' => current_user.refresh_token,
-                                                       'client_id' => ENV['GOOGLE_CLIENT_ID'],
-                                                       'client_secret' => ENV['GOOGLE_SECRET']
-                                                     }
-                                                   })
+    
+    binding.pry
+    
+    # secrets = Google::APIClient::ClientSecrets.new({
+    #                                                  'web' => {
+    #                                                    'access_token' => current_user.oauth_token,
+    #                                                    'refresh_token' => current_user.refresh_token,
+    #                                                    'client_id' => ENV['GOOGLE_CLIENT_ID'],
+    #                                                    'client_secret' => ENV['GOOGLE_SECRET']
+    #                                                  }
+    #                                                })
+    credentials = Google::Auth::UserRefreshCredentials.new(
+                                                            client_id: ENV['GOOGLE_CLIENT_ID'],
+                                                            client_secret: ENV['GOOGLE_SECRET'],
+                                                            scope: Google::Apis::CalendarV3::AUTH_CALENDAR,
+                                                            refresh_token: current_user.refresh_token,
+                                                            access_token: current_user.oauth_token
+                                                          )
     
     begin
-      client.authorization = secrets.to_authorization
-      client.authorization.grant_type = 'refresh_token'
-
-      if current_user.expired?
-        client.authorization.refresh!
-
+      # client.authorization = secrets.to_authorization
+      # client.authorization.grant_type = 'refresh_token'
+      # client.authorization.access_type = 'offline'
+      
+      client.authorization = credentials
+      if !current_user.expired?
+        # client.authorization.access_type = 'offline'
+        # client.authorization.scope = "https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/calendar"
+        
+        client.authorization.fetch_access_token!
+        
         current_user.update(
           oauth_token: client.authorization.access_token,
           refresh_token: client.authorization.refresh_token,
           oauth_expires_at: Time.at(client.authorization.expires_at)
         )
       end
+      
+      
     rescue StandardError => e
       puts e.message
     end
-
+    
     client
   end
 
@@ -85,7 +104,7 @@ class TasksController < ApplicationController
     g_event = client.get_event(Event::CALENDAR_ID, @task.google_event_id)
     task = params[:task]
     ge = get_event task
-    # binding.pry
+    # 
     client.update_event(Event::CALENDAR_ID, @task.google_event_id, ge)
 
     respond_to do |format|
@@ -101,16 +120,9 @@ class TasksController < ApplicationController
 
   # DELETE /tasks/1 or /tasks/1.json
   def destroy
-    # @task.destroy
+    @task.destroy
     client = get_google_calendar_client
-    @tasks = current_user.tasks
-    @tasks.each do |event|
-      g_event = client.get_event(Event::CALENDAR_ID, event.google_event_id)
-      guests = g_event.attendees.map {|at| at.email}.join(", ")
-      event.update(members: guests, title: g_event.summary)
-    end
-
-    # client.delete_event(Event::CALENDAR_ID, @task.google_event_id)
+    client.delete_event(Event::CALENDAR_ID, @task.google_event_id)
     respond_to do |format|
       format.html { redirect_to tasks_url, notice: "Task was successfully destroyed." }
       format.json { head :no_content }
@@ -130,10 +142,10 @@ class TasksController < ApplicationController
 
     def get_event task
 
-      attendees = task[:members].split(',').map{ |t|  Google::Apis::CalendarV3::EventAttendee.new(
+      attendees = task.members.split(',').map{ |t|  Google::Apis::CalendarV3::EventAttendee.new(
                                                     email: t.strip
                                                 ) }
-      # binding.pry
+      # 
       # event = {
       #   summary: task[:title],
       #   description: task[:description],
@@ -151,18 +163,18 @@ class TasksController < ApplicationController
       #     use_default: true
       #   }
       # }
-# binding.pry
+      
       event = Google::Apis::CalendarV3::Event.new(
-        summary: task[:title],
+        summary: task.title,
         location: '800 Howard St., San Francisco, CA 94103',
-        description: task[:description],
+        description: task.description,
         start: Google::Apis::CalendarV3::EventDateTime.new(
-          date_time: task[:start_date].to_datetime.to_s.gsub('+00:00',''),
-          time_zone: 'Asia/Ho_Chi_Minh'
+          date_time: task.start_date.to_datetime.to_s.gsub('+00:00',''),
+          time_zone: 'Asia/Tokyo'
         ),
         end: Google::Apis::CalendarV3::EventDateTime.new(
-          date_time: task[:end_date].to_datetime.to_s.gsub('+00:00',''),
-          time_zone: 'Asia/Ho_Chi_Minh'
+          date_time: task.end_date.to_datetime.to_s.gsub('+00:00',''),
+          time_zone: 'Asia/Tokyo'
         ),
         # recurrence: [
         #   'RRULE:FREQ=DAILY;COUNT=3'
@@ -174,7 +186,7 @@ class TasksController < ApplicationController
           use_default: true,
         )
       )
-      # binding.pry
+      # 
       event
     end
 end

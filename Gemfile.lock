@@ -339,6 +339,7 @@ DEPENDENCIES
   devise
   figaro
   google-api-client
+  googleauth
   importmap-rails
   jbuilder
   omniauth-google-oauth2
